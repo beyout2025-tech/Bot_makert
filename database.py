@@ -2,39 +2,40 @@ import sqlite3
 import json
 from datetime import datetime, timedelta
 
-# 1. تهيئة قاعدة البيانات (تحديث الجداول لدعم SaaS)
+# 1. [span_6](start_span)تهيئة قاعدة البيانات (دعم SaaS + المتجر)[span_6](end_span)
 def init_db():
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
-    # جدول البوتات: أضفنا bot_type و config
     c.execute('''CREATE TABLE IF NOT EXISTS bots 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                  user_id INTEGER, 
-                  token TEXT, 
-                  welcome_msg TEXT, 
-                  bot_type TEXT DEFAULT 'communication', 
-                  config TEXT,
-                  status INTEGER DEFAULT 1)''')
+                  user_id INTEGER, token TEXT, welcome_msg TEXT, 
+                  bot_type TEXT DEFAULT 'communication', config TEXT, status INTEGER DEFAULT 1)''')
     
-    # جدول مستخدمي المنصة: أضفنا points
     c.execute('''CREATE TABLE IF NOT EXISTS platform_users 
              (user_id INTEGER PRIMARY KEY, expiry_date TEXT, points INTEGER DEFAULT 0)''')
 
-    # جدول مستخدمين كل بوت مصنوع
     c.execute('''CREATE TABLE IF NOT EXISTS bot_users 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                  bot_id INTEGER, 
-                  user_id INTEGER, 
-                  is_banned INTEGER DEFAULT 0)''')
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, bot_id INTEGER, user_id INTEGER, is_banned INTEGER DEFAULT 0)''')
+    
+    # [span_7](start_span)جدول المنتجات الجديد[span_7](end_span)
+    c.execute('''CREATE TABLE IF NOT EXISTS products 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, bot_id INTEGER, 
+                  name TEXT, price TEXT, description TEXT)''')
+    
+    # [span_8](start_span)جدول الطلبات الجديد[span_8](end_span)
+    c.execute('''CREATE TABLE IF NOT EXISTS orders 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, bot_id INTEGER, 
+                  user_id INTEGER, product_name TEXT, status TEXT DEFAULT 'قيد التنفيذ', timestamp TEXT)''')
     
     conn.commit()
     conn.close()
 
-# 2. إضافة بوت جديد (يدعم اختيار النوع)
+# [span_9](start_span)... (الدوال من 2 إلى 21 تبقى كما هي تماماً دون أي تغيير)[span_9](end_span)
+
+# 2. إضافة بوت جديد
 def add_bot(user_id, token, bot_type="communication"):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
-    # الإعدادات الافتراضية تكون عبارة عن JSON فارغ
     default_config = json.dumps({}) 
     c.execute("INSERT INTO bots (user_id, token, welcome_msg, bot_type, config) VALUES (?, ?, ?, ?, ?)", 
               (user_id, token, "مرحباً بك في بوتنا الجديد!", bot_type, default_config))
@@ -44,7 +45,7 @@ def add_bot(user_id, token, bot_type="communication"):
     conn.close()
     return bot_id
 
-# 3. جلب جميع البوتات النشطة مع أنواعها
+# 3. جلب جميع البوتات النشطة
 def get_all_active_bots():
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
@@ -53,7 +54,7 @@ def get_all_active_bots():
     conn.close()
     return bots
 
-# 4. جلب بوتات مستخدم معين مع النوع
+# 4. جلب بوتات مستخدم معين
 def get_user_bots(user_id):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
@@ -218,3 +219,59 @@ def update_bot_settings(bot_id, config_dict):
     c.execute("UPDATE bots SET config = ? WHERE id = ?", (config_json, bot_id))
     conn.commit()
     conn.close()
+
+# -[span_10](start_span)-- دوال المتجر الجديدة[span_10](end_span) ---
+
+# 22. إضافة منتج للمتجر
+def add_product(bot_id, name, price, description):
+    conn = sqlite3.connect('factory.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO products (bot_id, name, price, description) VALUES (?, ?, ?, ?)", 
+              (bot_id, name, price, description))
+    conn.commit()
+    conn.close()
+
+# 23. جلب منتجات بوت معين
+def get_products(bot_id):
+    conn = sqlite3.connect('factory.db')
+    c = conn.cursor()
+    c.execute("SELECT id, name, price, description FROM products WHERE bot_id = ?", (bot_id,))
+    products = c.fetchall()
+    conn.close()
+    return products
+
+# 24. حذف منتج
+def delete_product(product_id):
+    conn = sqlite3.connect('factory.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM products WHERE id = ?", (product_id,))
+    conn.commit()
+    conn.close()
+
+# 25. إضافة طلب جديد
+def add_order(bot_id, user_id, product_name):
+    conn = sqlite3.connect('factory.db')
+    c = conn.cursor()
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    c.execute("INSERT INTO orders (bot_id, user_id, product_name, timestamp) VALUES (?, ?, ?, ?)", 
+              (bot_id, user_id, product_name, timestamp))
+    conn.commit()
+    conn.close()
+
+# 26. جلب طلبات مستخدم في بوت معين
+def get_user_orders(bot_id, user_id):
+    conn = sqlite3.connect('factory.db')
+    c = conn.cursor()
+    c.execute("SELECT id, product_name, status, timestamp FROM orders WHERE bot_id = ? AND user_id = ?", (bot_id, user_id))
+    orders = c.fetchall()
+    conn.close()
+    return orders
+
+# 27. جلب كافة طلبات المتجر للمالك
+def get_owner_orders(bot_id):
+    conn = sqlite3.connect('factory.db')
+    c = conn.cursor()
+    c.execute("SELECT id, user_id, product_name, status, timestamp FROM orders WHERE bot_id = ?", (bot_id,))
+    orders = c.fetchall()
+    conn.close()
+    return orders
