@@ -1,16 +1,17 @@
 # templates/communication.py
 from aiogram import Router, types, F
+from aiogram.filters import StateFilter # أضف هذا الاستيراد
 from database import bot_db_update_user, update_user_points
 
 router = Router()
 
 def register_communication_handlers(dp: Router, bot_id, owner_id, msg_user_map):
     
-    @router.message(F.chat.type == "private", F.from_user.id != owner_id, ~F.text.startswith("/"))
+    # أضفنا StateFilter(None) لكي لا يختطف الرسائل أثناء الترجمة
+    @router.message(F.chat.type == "private", F.from_user.id != owner_id, ~F.text.startswith("/"), StateFilter(None))
     async def forward_to_owner(message: types.Message):
         bot_db_update_user(bot_id, message.from_user.id)
         try:
-            # نظام الإشعار الذكي لحل مشكلة الرد
             header = (f"📩 **رسالة جديدة واردة:**\n👤 الاسم: {message.from_user.full_name}\n"
                       f"🆔 المعرف: `{message.from_user.id}`\n---")
             
