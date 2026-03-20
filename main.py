@@ -122,6 +122,8 @@ async def select_bot_type(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 # 6. استقبال التوكن وتشغيله وإرسال إشعار للمطور
+# ... (نفس الاستيرادات السابقة)
+
 @dp.message(BotStates.waiting_for_token)
 async def process_token(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
@@ -131,15 +133,14 @@ async def process_token(message: types.Message, state: FSMContext):
     
     msg = await message.answer("🔄 جاري التحقق والتشغيل برمجياً...")
     try:
-        # التحقق من صحة التوكن
         temp_bot = Bot(token=user_token)
         bot_info = await temp_bot.get_me()
         await temp_bot.session.close() 
         
-        # إضافة البوت لقاعدة البيانات
+        # حفظ في القاعدة
         bot_id = add_bot(message.from_user.id, user_token, bot_type)
         
-        # --- [إشعار المطور - البوت الأب] ---
+        # --- [تصحيح] إرسال إشعار للمطور (البوت الأب) ---
         stats = get_stats()
         admin_notify = (
             "تم صنع بوت جديد في الصانع الخاص بك 📝\n"
@@ -154,10 +155,11 @@ async def process_token(message: types.Message, state: FSMContext):
             "            -----------------------\n\n"
             f"• عدد البوتات المصنوعة : {stats['bots']}"
         )
-        # الإرسال عبر البوت الأب الأساسي للمطور
-        try: await bot.send_message(ADMIN_ID, admin_notify, parse_mode="Markdown")
-        except: pass
-        # ----------------------------------
+        # نستخدم الكائن 'bot' الأساسي في main.py للإرسال للمطور
+        try:
+            await bot.send_message(chat_id=ADMIN_ID, text=admin_notify, parse_mode="Markdown")
+        except Exception as e:
+            print(f"Admin Notify Error: {e}")
 
         await msg.edit_text(
             f"✅ تم تشغيل بوت **{bot_type}** بنجاح!\n\n"
@@ -168,7 +170,8 @@ async def process_token(message: types.Message, state: FSMContext):
         asyncio.create_task(start_custom_bot(bot_id, user_token, message.from_user.id, bot_type))
         await state.clear()
     except Exception:
-        await msg.edit_text("❌ التوكن غير صحيح أو منتهي. حاول مجدداً.", reply_markup=cancel_menu())
+        await msg.edit_text("❌ التوكن غير صحيح أو منتهي.", reply_markup=cancel_menu())
+
 
 # 7. عرض قائمة "بوتاتي المصنوعة"
 @dp.callback_query(F.data == "my_bots")
