@@ -170,4 +170,19 @@ def is_subscription_active(user_id):
 
 
 # دالة للتحقق هل اشتراك المستخدم ساري أم لا
-is_subscription_active
+def is_subscription_active(user_id):
+    conn = sqlite3.connect('factory.db')
+    c = conn.cursor()
+    c.execute("SELECT expiry_date FROM platform_users WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    
+    # التأكد من وجود سجل ومن أن القيمة ليست None
+    if row and row[0] is not None:
+        try:
+            expire_date = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
+            return datetime.now() < expire_date
+        except ValueError:
+            return False
+    return False
+
