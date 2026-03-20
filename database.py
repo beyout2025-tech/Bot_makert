@@ -152,17 +152,6 @@ def count_user_bots(user_id):
     return count
 
 # دالة لتفعيل اشتراك مستخدم لفترة زمنية محددة
-def activate_user_subscription(user_id, days):
-    conn = sqlite3.connect('factory.db')
-    c = conn.cursor()
-    expire_date = (datetime.now() + timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
-    # نحدث جدول platform_users لإضافة تاريخ الانتهاء
-    c.execute("UPDATE platform_users SET expiry_date = ? WHERE user_id = ?", (expire_date, user_id))
-    conn.commit()
-    conn.close()
-    return expire_date
-
-# دالة للتحقق هل اشتراك المستخدم ساري أم لا
 def is_subscription_active(user_id):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
@@ -170,8 +159,15 @@ def is_subscription_active(user_id):
     row = c.fetchone()
     conn.close()
     
-    if row and row[0]:
-        expire_date = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
-        return datetime.now() < expire_date # يعيد True إذا كان الوقت الحالي قبل وقت الانتهاء
-    return False # غير مشترك أو انتهى
+    # التأكد من وجود سجل ومن أن القيمة ليست None
+    if row and row[0] is not None:
+        try:
+            expire_date = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
+            return datetime.now() < expire_date
+        except ValueError:
+            return False
+    return False
 
+
+# دالة للتحقق هل اشتراك المستخدم ساري أم لا
+is_subscription_active
