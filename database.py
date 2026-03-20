@@ -2,27 +2,33 @@ import sqlite3
 import json
 from datetime import datetime, timedelta
 
-# 1. [span_6](start_span)تهيئة قاعدة البيانات (دعم SaaS + المتجر)[span_6](end_span)
+# 1. تهيئة قاعدة البيانات (دعم SaaS + المتجر + تعقب الحظر)
 def init_db():
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
+    # جدول البوتات
     c.execute('''CREATE TABLE IF NOT EXISTS bots 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   user_id INTEGER, token TEXT, welcome_msg TEXT, 
                   bot_type TEXT DEFAULT 'communication', config TEXT, status INTEGER DEFAULT 1)''')
     
+    # جدول مستخدمي المنصة
     c.execute('''CREATE TABLE IF NOT EXISTS platform_users 
              (user_id INTEGER PRIMARY KEY, expiry_date TEXT, points INTEGER DEFAULT 0)''')
 
+    # جدول مستخدمين كل بوت مصنوع - تمت إضافة has_blocked
     c.execute('''CREATE TABLE IF NOT EXISTS bot_users 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, bot_id INTEGER, user_id INTEGER, is_banned INTEGER DEFAULT 0)''')
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                  bot_id INTEGER, user_id INTEGER, 
+                  is_banned INTEGER DEFAULT 0,
+                  has_blocked INTEGER DEFAULT 0)''')
     
-    # [span_7](start_span)جدول المنتجات الجديد[span_7](end_span)
+    # جدول المنتجات
     c.execute('''CREATE TABLE IF NOT EXISTS products 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, bot_id INTEGER, 
                   name TEXT, price TEXT, description TEXT)''')
     
-    # [span_8](start_span)جدول الطلبات الجديد[span_8](end_span)
+    # جدول الطلبات
     c.execute('''CREATE TABLE IF NOT EXISTS orders 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, bot_id INTEGER, 
                   user_id INTEGER, product_name TEXT, status TEXT DEFAULT 'قيد التنفيذ', timestamp TEXT)''')
@@ -30,15 +36,13 @@ def init_db():
     conn.commit()
     conn.close()
 
-# [span_9](start_span)... (الدوال من 2 إلى 21 تبقى كما هي تماماً دون أي تغيير)[span_9](end_span)
-
 # 2. إضافة بوت جديد
 def add_bot(user_id, token, bot_type="communication"):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
     default_config = json.dumps({}) 
     c.execute("INSERT INTO bots (user_id, token, welcome_msg, bot_type, config) VALUES (?, ?, ?, ?, ?)", 
-              (user_id, token, "مرحباً بك في بوتنا الجديد!", bot_type, default_config))
+              (user_id, token, "مرحباً بك #name!", bot_type, default_config))
     c.execute("INSERT OR IGNORE INTO platform_users (user_id) VALUES (?)", (user_id,))
     conn.commit()
     bot_id = c.lastrowid
@@ -61,7 +65,7 @@ def get_user_bots(user_id):
     c.execute("SELECT id, token, bot_type FROM bots WHERE user_id = ?", (user_id,))
     bots = c.fetchall()
     conn.close()
-    return [(b[0], f"{b[2].capitalize()}_{str(b[1])[:5]}...") for b in bots]
+    return [(b[0], f"{b[2].capitalize()}_{str(b[1])[:5]}...", b[2]) for b in bots]
 
 # 5. جلب إحصائيات المنصة
 def get_stats():
@@ -83,13 +87,29 @@ def get_all_users():
     conn.close()
     return users
 
-# 7. تحديث مستخدم البوت المصنوع
+# 7. تحديث مستخدم البوت المصنوع (تطوير منطق الإشعارات الذكي)
 def bot_db_update_user(bot_id, user_id):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO bot_users (bot_id, user_id) VALUES (?, ?)", (bot_id, user_id))
-    conn.commit()
+    c.execute("SELECT has_blocked FROM bot_users WHERE bot_id = ? AND user_id = ?", (bot_id, user_id))
+    row = c.fetchone()
+    
+    if row is None:
+        # عضو جديد كلياً
+        c.execute("INSERT INTO bot_users (bot_id, user_id) VALUES (?, ?)", (bot_id, user_id))
+        c.execute("INSERT OR IGNORE INTO platform_users (user_id) VALUES (?)", (user_id,))
+        conn.commit()
+        conn.close()
+        return "new"
+    elif row[0] == 1:
+        # عضو عاد بعد أن قام بحظر البوت
+        c.execute("UPDATE bot_users SET has_blocked = 0 WHERE bot_id = ? AND user_id = ?", (bot_id, user_id))
+        conn.commit()
+        conn.close()
+        return "returned"
+    
     conn.close()
+    return "exists" # عضو موجود ونشط مسبقاً
 
 # 8. حظر مستخدم
 def ban_user_db(bot_id, user_id):
@@ -121,7 +141,7 @@ def get_bot_stats(bot_id):
 def get_bot_users_for_broadcast(bot_id):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
-    c.execute("SELECT user_id FROM bot_users WHERE bot_id = ? AND is_banned = 0", (bot_id,))
+    c.execute("SELECT user_id FROM bot_users WHERE bot_id = ? AND is_banned = 0 AND has_blocked = 0", (bot_id,))
     users = [row[0] for row in c.fetchall()]
     conn.close()
     return users
@@ -141,7 +161,7 @@ def get_welcome_msg(bot_id):
     c.execute("SELECT welcome_msg FROM bots WHERE id = ?", (bot_id, ))
     result = c.fetchone()
     conn.close()
-    return result[0] if result else "مرحباً بك!"
+    return result[0] if result else "مرحباً بك #name!"
 
 # 14. حساب البوتات لكل مستخدم
 def count_user_bots(user_id):
@@ -157,8 +177,7 @@ def activate_user_subscription(user_id, days):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
     expire_date = (datetime.now() + timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
-    c.execute("INSERT OR REPLACE INTO platform_users (user_id, expiry_date) VALUES (?, ?)", 
-              (user_id, expire_date))
+    c.execute("INSERT OR REPLACE INTO platform_users (user_id, expiry_date) VALUES (?, ?)", (user_id, expire_date))
     conn.commit()
     conn.close()
     return expire_date
@@ -203,7 +222,7 @@ def get_subscription_details(user_id):
     conn.close()
     return row if row else (None, 0)
 
-# 20. تحديث النقاط (جديد)
+# 20. تحديث النقاط
 def update_user_points(user_id, amount):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
@@ -211,7 +230,7 @@ def update_user_points(user_id, amount):
     conn.commit()
     conn.close()
 
-# 21. تحديث إعدادات البوت (JSON Config) (جديد)
+# 21. تحديث إعدادات البوت (JSON Config)
 def update_bot_settings(bot_id, config_dict):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
@@ -219,8 +238,6 @@ def update_bot_settings(bot_id, config_dict):
     c.execute("UPDATE bots SET config = ? WHERE id = ?", (config_json, bot_id))
     conn.commit()
     conn.close()
-
-# -[span_10](start_span)-- دوال المتجر الجديدة[span_10](end_span) ---
 
 # 22. إضافة منتج للمتجر
 def add_product(bot_id, name, price, description):
@@ -275,3 +292,22 @@ def get_owner_orders(bot_id):
     orders = c.fetchall()
     conn.close()
     return orders
+
+# --- الدوال الجديدة لدعم نظام "الحظر والعودة" ---
+
+# 28. تحديث حالة قيام العضو بحظر البوت
+def set_user_blocked_bot(bot_id, user_id, status):
+    conn = sqlite3.connect('factory.db')
+    c = conn.cursor()
+    c.execute("UPDATE bot_users SET has_blocked = ? WHERE bot_id = ? AND user_id = ?", (status, bot_id, user_id))
+    conn.commit()
+    conn.close()
+
+# 29. جلب عدد الذين قاموا بحظر البوت حتى الآن
+def get_blocked_count(bot_id):
+    conn = sqlite3.connect('factory.db')
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM bot_users WHERE bot_id = ? AND has_blocked = 1", (bot_id,))
+    count = c.fetchone()[0]
+    conn.close()
+    return count
