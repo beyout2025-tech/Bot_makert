@@ -56,7 +56,6 @@ def get_user_bots(user_id):
     c.execute("SELECT id, token FROM bots WHERE user_id = ?", (user_id,))
     bots = c.fetchall()
     conn.close()
-    # سنقوم بإرجاع الـ ID وجزء من التوكن كاسم تعريفي مؤقت
     return [(b[0], f"Bot_{str(b[1])[:5]}...") for b in bots]
 
 # 5. جلب إحصائيات المنصة (للمطور)
@@ -83,7 +82,6 @@ def get_all_users():
 def bot_db_update_user(bot_id, user_id):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
-    # إضافة المستخدم لجدول bot_users إذا لم يكن موجوداً لهذا البوت تحديداً
     c.execute("INSERT OR IGNORE INTO bot_users (bot_id, user_id) VALUES (?, ?)", (bot_id, user_id))
     conn.commit()
     conn.close()
@@ -92,7 +90,6 @@ def bot_db_update_user(bot_id, user_id):
 def ban_user_db(bot_id, user_id):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
-    # تحديث حالة الحظر لهذا المستخدم داخل هذا البوت فقط
     c.execute("UPDATE bot_users SET is_banned = 1 WHERE bot_id = ? AND user_id = ?", (bot_id, user_id))
     conn.commit()
     conn.close()
@@ -104,7 +101,6 @@ def is_user_banned(bot_id, user_id):
     c.execute("SELECT is_banned FROM bot_users WHERE bot_id = ? AND user_id = ?", (bot_id, user_id))
     result = c.fetchone()
     conn.close()
-    # إذا وجد السجل وكانت القيمة 1 فهو محظور
     return result is not None and result[0] == 1
 
 # 10. جلب إحصائيات البوت المصنوع (عدد مستخدميه)
@@ -125,7 +121,7 @@ def get_bot_users_for_broadcast(bot_id):
     conn.close()
     return users
 
-# دالة لتحديث رسالة الترحيب في قاعدة البيانات
+# 12. تحديث رسالة الترحيب
 def update_welcome_msg(bot_id, new_msg):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
@@ -133,7 +129,7 @@ def update_welcome_msg(bot_id, new_msg):
     conn.commit()
     conn.close()
 
-# دالة لجلب رسالة الترحيب الحالية (لاستخدامها عند دخول مستخدم جديد)
+# 13. جلب رسالة الترحيب
 def get_welcome_msg(bot_id):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
@@ -142,7 +138,7 @@ def get_welcome_msg(bot_id):
     conn.close()
     return result[0] if result else "مرحباً بك!"
 
-# دالة لحساب عدد البوتات التي يملكها مستخدم واحد
+# 14. حساب عدد البوتات لكل مستخدم
 def count_user_bots(user_id):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
@@ -151,7 +147,19 @@ def count_user_bots(user_id):
     conn.close()
     return count
 
-# دالة لتفعيل اشتراك مستخدم لفترة زمنية محددة
+# 15. تفعيل اشتراك مستخدم (تم التعديل لضمان الإضافة الفورية)
+def activate_user_subscription(user_id, days):
+    conn = sqlite3.connect('factory.db')
+    c = conn.cursor()
+    expire_date = (datetime.now() + timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+    # استخدام INSERT OR REPLACE لضمان تحديث البيانات حتى لو كان المستخدم جديداً
+    c.execute("INSERT OR REPLACE INTO platform_users (user_id, expiry_date) VALUES (?, ?)", 
+              (user_id, expire_date))
+    conn.commit()
+    conn.close()
+    return expire_date
+
+# 16. التحقق من صلاحية الاشتراك
 def is_subscription_active(user_id):
     conn = sqlite3.connect('factory.db')
     c = conn.cursor()
@@ -159,7 +167,6 @@ def is_subscription_active(user_id):
     row = c.fetchone()
     conn.close()
     
-    # التأكد من وجود سجل ومن أن القيمة ليست None
     if row and row[0] is not None:
         try:
             expire_date = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
@@ -167,22 +174,3 @@ def is_subscription_active(user_id):
         except ValueError:
             return False
     return False
-
-
-# دالة للتحقق هل اشتراك المستخدم ساري أم لا
-def is_subscription_active(user_id):
-    conn = sqlite3.connect('factory.db')
-    c = conn.cursor()
-    c.execute("SELECT expiry_date FROM platform_users WHERE user_id = ?", (user_id,))
-    row = c.fetchone()
-    conn.close()
-    
-    # التأكد من وجود سجل ومن أن القيمة ليست None
-    if row and row[0] is not None:
-        try:
-            expire_date = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
-            return datetime.now() < expire_date
-        except ValueError:
-            return False
-    return False
-
