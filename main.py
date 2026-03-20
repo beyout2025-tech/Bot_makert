@@ -131,14 +131,15 @@ async def process_token(message: types.Message, state: FSMContext):
     
     msg = await message.answer("🔄 جاري التحقق والتشغيل برمجياً...")
     try:
+        # التحقق من صحة التوكن
         temp_bot = Bot(token=user_token)
         bot_info = await temp_bot.get_me()
         await temp_bot.session.close() 
         
-        # حفظ في القاعدة
+        # إضافة البوت لقاعدة البيانات
         bot_id = add_bot(message.from_user.id, user_token, bot_type)
         
-        # --- [جديد] إرسال إشعار للمطور (البوت الأب) ---
+        # --- [إشعار المطور - البوت الأب] ---
         stats = get_stats()
         admin_notify = (
             "تم صنع بوت جديد في الصانع الخاص بك 📝\n"
@@ -153,9 +154,10 @@ async def process_token(message: types.Message, state: FSMContext):
             "            -----------------------\n\n"
             f"• عدد البوتات المصنوعة : {stats['bots']}"
         )
+        # الإرسال عبر البوت الأب الأساسي للمطور
         try: await bot.send_message(ADMIN_ID, admin_notify, parse_mode="Markdown")
         except: pass
-        # ---------------------------------------------------------
+        # ----------------------------------
 
         await msg.edit_text(
             f"✅ تم تشغيل بوت **{bot_type}** بنجاح!\n\n"
