@@ -8,57 +8,51 @@ import os
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # استيراد الوظائف من الملفات الفرعية المحدثة
-# تم التأكد من جلب كافة الدوال المطلوبة للنظام المطور
 from keyboards import main_menu, cancel_menu, bot_types_menu 
 from database import (
     add_bot, init_db, get_all_active_bots, 
     get_user_bots, get_stats, count_user_bots, get_all_users,
     activate_user_subscription, is_subscription_active,
-    get_subscription_details, update_user_points # الدوال الجديدة لدعم نظام SaaS
+    get_subscription_details, update_user_points,
+    get_bot_users_for_broadcast # تم إضافتها لدعم الإذاعة العالمية
 )
 from bot_engine import start_custom_bot
 
 # إعداد قاعدة البيانات عند تشغيل السيرفر لأول مرة
 init_db()
 
-# تطوير حالات الإدخال لتشمل تدفق اختيار "نوع البوت"
+# حالات الإدخال للنظام المطور
 class BotStates(StatesGroup):
-    waiting_for_bot_type = State() # حالة اختيار النوع (تواصل، ترجمة، إلخ)
+    waiting_for_bot_type = State() # حالة اختيار النوع
     waiting_for_token = State()
     waiting_for_broadcast = State()
 
 # --- الإعدادات الأساسية ---
-# ⚠️ ملاحظة: ADMIN_ID هو المتحكم الكامل في صلاحيات المطور
+# ⚠️ ملاحظة: ADMIN_ID هو المتحكم الكامل في المنصة
 ADMIN_ID = 873158772  
 bot = Bot(token="7353517186:AAGSFyYX0JgElvaKjbWvS0ZmNh9OtalOGqM")
 dp = Dispatcher()
 
-# 1. معالج أمر البداية (Start) مع عرض حالة الاشتراك الاحترافية
+# 1. معالج أمر البداية (Start) مع إظهار حالة الحساب
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
-    # التحقق من حالة الاشتراك لإظهارها في الرسالة الترحيبية
     is_vip = is_subscription_active(message.from_user.id)
     status_text = "✅ مدفوع (VIP)" if is_vip else "❌ مجاني"
     
     welcome_text = (
         "🔥 **أهلاً بك في منصة صناعة البوتات المتطورة (SaaS)!**\n\n"
-        "هنا يمكنك إنشاء وإدارة أنواع متعددة من البوتات من مكان واحد، وباحترافية كاملة.\n\n"
+        "الآن يمكنك إنشاء بوت تواصل، ترجمة، متجر، أو دعم فني بضغطة زر واحدة.\n\n"
         f"💎 **حالة حسابك حالياً:** {status_text}\n\n"
-        "💡 **ماذا يمكنك أن تفعل؟**\n"
-        "• إنشاء بوتات (تواصل، ترجمة، متجر، دعم).\n"
-        "• إدارة رسائل المستخدمين والحظر بالرد.\n"
-        "• عمل إذاعة (برودكاست) لمشتركيك."
+        "🚀 استخدم الأزرار أدناه للبدء في بناء إمبراطوريتك البرمجية."
     )
     await message.answer(text=welcome_text, reply_markup=main_menu(), parse_mode="Markdown")
 
-# 2. معالج البروفايل المطور (يشمل عرض النقاط وتاريخ الاشتراك)
+# 2. معالج البروفايل المطور (النقاط وتاريخ الاشتراك)
 @dp.callback_query(F.data == "profile")
 async def profile_handler(callback: types.CallbackQuery):
-    # جلب التاريخ والنقاط من الدالة المحدثة في قاعدة البيانات
     sub_data = get_subscription_details(callback.from_user.id)
     expire_date = sub_data[0] if sub_data else None
     points = sub_data[1] if sub_data else 0
-    
     bots_count = count_user_bots(callback.from_user.id)
     
     text = (
@@ -67,7 +61,7 @@ async def profile_handler(callback: types.CallbackQuery):
         f"💰 رصيد النقاط: `{points} نقطة`\n"
         f"🤖 البوتات النشطة: `{bots_count}/3`\n"
         f"📅 انتهاء الاشتراك: `{expire_date if expire_date else 'غير مشترك'}`\n\n"
-        "💡 *ملاحظة: النقاط تمنحك ميزات إضافية وخصومات عند التجديد.*"
+        "💡 *ملاحظة: يمكنك ترقية حسابك للحصول على ميزات إضافية في بوتاتك.*"
     )
     await callback.message.answer(text, parse_mode="Markdown")
     await callback.answer()
@@ -82,7 +76,7 @@ async def cancel_handler(callback: types.CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
-# 4. أوامر المطور (تفعيل VIP وتصفير قاعدة البيانات)
+# 4. أوامر المطور (تفعيل VIP وتصفير البيانات)
 @dp.message(Command("vip"), F.from_user.id == ADMIN_ID)
 async def cmd_activate_vip(message: types.Message):
     try:
@@ -92,7 +86,7 @@ async def cmd_activate_vip(message: types.Message):
         await message.answer(f"✅ تم تفعيل VIP للمستخدم {target_id}\n📅 ينتهي في: {expire_dt}")
         await bot.send_message(target_id, f"🎉 تهانينا! تم تفعيل اشتراكك VIP لمدة {days} يوم.")
     except Exception:
-        await message.answer("❌ خطأ! استخدم: `/vip id days`")
+        await message.answer("❌ خطأ! استخدم: `/vip id days` (مثال: `/vip 873158772 365`)")
 
 @dp.message(Command("reset_db"), F.from_user.id == ADMIN_ID)
 async def reset_database(message: types.Message):
@@ -102,18 +96,14 @@ async def reset_database(message: types.Message):
     else:
         await message.answer("❌ الملف غير موجود.")
 
-# 5. منطق إنشاء بوت جديد (تدفق SaaS: فحص -> اختيار نوع -> توكن)
+# 5. منطق إنشاء بوت جديد (تم إتاحة الميزة للجميع)
 @dp.callback_query(F.data == "create")
 async def create_bot_callback(callback: types.CallbackQuery, state: FSMContext):
-    # 1. فحص الاشتراك
-    if not is_subscription_active(callback.from_user.id):
-        return await callback.message.answer("⚠️ هذه الميزة للمشتركين VIP فقط.", show_alert=True)
+    # تم إزالة شرط "is_subscription_active" للسماح للمجانيين بالإنشاء
     
-    # 2. فحص الحد الأقصى
     if count_user_bots(callback.from_user.id) >= 3:
         return await callback.answer("⚠️ وصلت للحد الأقصى المسموح به (3 بوتات).", show_alert=True)
     
-    # 3. عرض قائمة أنواع البوتات
     await callback.message.edit_text(
         "⚙️ **اختر نوع البوت الذي ترغب في إنشائه الآن:**", 
         reply_markup=bot_types_menu()
@@ -121,7 +111,6 @@ async def create_bot_callback(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(BotStates.waiting_for_bot_type)
     await callback.answer()
 
-# معالج اختيار النوع
 @dp.callback_query(BotStates.waiting_for_bot_type, F.data.startswith("type_"))
 async def select_bot_type(callback: types.CallbackQuery, state: FSMContext):
     bot_type = callback.data.split("_")[1]
@@ -147,7 +136,6 @@ async def process_token(message: types.Message, state: FSMContext):
         bot_info = await temp_bot.get_me()
         await temp_bot.session.close() 
         
-        # حفظ في القاعدة مع النوع المختار
         bot_id = add_bot(message.from_user.id, user_token, bot_type)
         
         await msg.edit_text(
@@ -155,10 +143,7 @@ async def process_token(message: types.Message, state: FSMContext):
             f"🤖 الاسم: **{bot_info.first_name}**\n🔗 المعرف: @{bot_info.username}"
         )
         
-        # مكافأة المستخدم بنقاط عند الإنشاء الناجح
-        update_user_points(message.from_user.id, 10)
-        
-        # تصحيح: تمرير النوع للمحرك لضمان الرد المناسب
+        update_user_points(message.from_user.id, 10) # مكافأة إنشاء
         asyncio.create_task(start_custom_bot(bot_id, user_token, message.from_user.id, bot_type))
         await state.clear()
     except Exception:
@@ -173,7 +158,6 @@ async def show_my_bots(callback: types.CallbackQuery):
     
     text = "🤖 **قائمة بوتاتك النشطة:**\n\n"
     for b_id, b_name in user_bots:
-        # b[2] يمثل نوع البوت في قاعدة البيانات المحدثة
         text += f"🔹 معرف السجل: `{b_id}` | النوع: {b_name}\n"
     
     await callback.message.answer(text, parse_mode="Markdown")
@@ -194,24 +178,52 @@ async def backup_db(callback: types.CallbackQuery):
     if os.path.exists("factory.db"):
         await callback.message.answer_document(FSInputFile("factory.db"), caption="📂 نسخة القاعدة الاحترافية.")
 
-# 9. نظام الإذاعة العامة
+# 9. نظام الإذاعة العالمية (المطور يرسل للجميع عبر كافة البوتات)
 @dp.callback_query(F.data == "broadcast")
 async def broadcast_cmd(callback: types.CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID: return
-    await callback.message.answer("📣 أرسل رسالة الإذاعة:", reply_markup=cancel_menu())
+    await callback.message.answer(
+        "📣 **إذاعة عالمية:** أرسل رسالتك الآن ليتم إرسالها لمستخدمي المنصة ومستخدمي كافة البوتات المصنوعة:",
+        reply_markup=cancel_menu()
+    )
     await state.set_state(BotStates.waiting_for_broadcast)
+    await callback.answer()
 
 @dp.message(BotStates.waiting_for_broadcast)
 async def do_broadcast(message: types.Message, state: FSMContext):
-    users = get_all_users(); count, skipped = 0, 0
-    for u_id in users:
-        if is_subscription_active(u_id):
-            skipped += 1; continue 
+    # 1. الإذاعة لمستخدمي البوت الصانع الرئيسي
+    main_platform_users = get_all_users()
+    main_count = 0
+    for u_id in main_platform_users:
         try:
             await bot.copy_message(chat_id=u_id, from_chat_id=message.chat.id, message_id=message.message_id)
-            count += 1
+            main_count += 1
         except: continue
-    await message.answer(f"✅ تم الإرسال لـ {count} مستخدم | استثناء {skipped} VIP")
+
+    # 2. الإذاعة لمستخدمي كافة البوتات المصنوعة (إذاعة عالمية)
+    all_bots = get_all_active_bots()
+    child_count = 0
+    bots_processed = 0
+    
+    for b_id, b_token, b_owner, b_type in all_bots:
+        try:
+            # إنشاء اتصال مؤقت ببوت الطفل لإرسال الرسالة
+            temp_bot = Bot(token=b_token)
+            bot_users = get_bot_users_for_broadcast(b_id)
+            for u_id in bot_users:
+                try:
+                    await temp_bot.copy_message(chat_id=u_id, from_chat_id=message.chat.id, message_id=message.message_id)
+                    child_count += 1
+                except: continue
+            await temp_bot.session.close() # إغلاق الاتصال لضمان الأداء
+            bots_processed += 1
+        except: continue
+            
+    await message.answer(
+        f"✅ **اكتملت الإذاعة العالمية بنجاح!**\n\n"
+        f"👥 مستخدمي المنصة: `{main_count}`\n"
+        f"🤖 مستخدمي البوتات المصنوعة: `{child_count}` عبر `{bots_processed}` بوت."
+    )
     await state.clear()
 
 # 10. محرك التشغيل التلقائي المطور (تمرير 4 قيم)
@@ -219,7 +231,7 @@ async def startup_all_bots():
     existing_bots = get_all_active_bots()
     if existing_bots:
         print(f"📦 جاري إعادة تشغيل {len(existing_bots)} بوت بأنواعها المختلفة...")
-        for bot_id, token, owner_id, b_type in existing_bots: # تصحيح عدد القيم المستلمة
+        for bot_id, token, owner_id, b_type in existing_bots:
             asyncio.create_task(start_custom_bot(bot_id, token, owner_id, b_type))
             await asyncio.sleep(0.3)
 
@@ -230,4 +242,4 @@ if __name__ == "__main__":
     try:
         loop.run_until_complete(dp.start_polling(bot))
     except KeyboardInterrupt:
-        print("👋 إيقاف.")
+        print("👋 إيقاف النظام.")
